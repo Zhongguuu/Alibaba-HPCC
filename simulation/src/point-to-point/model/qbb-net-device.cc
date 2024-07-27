@@ -50,6 +50,7 @@
 #include <iostream>
 
 NS_LOG_COMPONENT_DEFINE("QbbNetDevice");
+// QbbNetDevice既表示网卡，也表示交换机
 
 namespace ns3 {
 	
@@ -373,10 +374,10 @@ namespace ns3 {
 			if (!m_qbbEnabled) return;
 			unsigned qIndex = ch.pfc.qIndex;
 			if (ch.pfc.time > 0){
-				m_tracePfc(1);
+				m_tracePfc(1); // 暂停
 				m_paused[qIndex] = true;
 			}else{
-				m_tracePfc(0);
+				m_tracePfc(0); // 继续
 				Resume(qIndex);
 			}
 		}else { // non-PFC packets (data, ACK, NACK, CNP...)

@@ -207,6 +207,7 @@ uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
 	if (v.size() > 0){
 		return v[qp->GetHash() % v.size()];
 	}else{
+		std::cout << "qp->sip = " << qp->sip.Get() << ", qp->dip = " << qp->dip.Get() << "\n";
 		NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
 	}
 }
@@ -220,6 +221,8 @@ Ptr<RdmaQueuePair> RdmaHw::GetQp(uint32_t dip, uint16_t sport, uint16_t pg){
 		return it->second;
 	return NULL;
 }
+
+// 添加队列，并通知网卡开始发送工作
 void RdmaHw::AddQueuePair(uint64_t size, uint16_t pg, Ipv4Address sip, Ipv4Address dip, uint16_t sport, uint16_t dport, uint32_t win, uint64_t baseRtt, Callback<void> notifyAppFinish){
 	// create qp
 	Ptr<RdmaQueuePair> qp = CreateObject<RdmaQueuePair>(pg, sip, dip, sport, dport);

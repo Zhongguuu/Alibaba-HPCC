@@ -42,7 +42,7 @@ if __name__ == "__main__":
 	base_t = 2000000000
 
 	if not options.nhost:
-		print "please use -n to enter number of hosts"
+		print ("please use -n to enter number of hosts")
 		sys.exit(0)
 	nhost = int(options.nhost)
 	load = float(options.load)
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 	time = float(options.time)*1e9 # translates to ns
 	output = options.output
 	if bandwidth == None:
-		print "bandwidth format incorrect"
+		print ("bandwidth format incorrect")
 		sys.exit(0)
 
 	fileName = options.cdf_file
@@ -65,18 +65,24 @@ if __name__ == "__main__":
 	# create a custom random generator, which takes a cdf, and generate number according to the cdf
 	customRand = CustomRand()
 	if not customRand.setCdf(cdf):
-		print "Error: Not valid cdf"
+		print ("Error: Not valid cdf")
 		sys.exit(0)
 
 	ofile = open(output, "w")
 
 	# generate flows
 	avg = customRand.getAvg()
+	intra_flow_cnt = 0
+	inter_flow_cnt = 0
 	# 按照cdf文件，得出流的平均size，按流平均size计算流发送的间隔
 	avg_inter_arrival = 1/(bandwidth*load/8./avg)*1000000000
 	n_flow_estimate = int(time / avg_inter_arrival * nhost)
 	n_flow = 0
 	ofile.write("%d \n"%n_flow_estimate)
+	inter_flow_cnt_limit = n_flow_estimate // 6
+	intra_flow_cnt_limit = n_flow_estimate - inter_flow_cnt_limit
+	print(f"inter_flow_cnt_limit = {inter_flow_cnt_limit}")
+	print(f"intra_flow_cnt_limit = {intra_flow_cnt_limit}")
 	host_list = [(base_t + int(poisson(avg_inter_arrival)), i) for i in range(nhost)]
 	heapq.heapify(host_list)
 	while len(host_list) > 0:
@@ -86,42 +92,39 @@ if __name__ == "__main__":
 		dst = random.randint(0, nhost-1)
 		while (dst == src):
 			dst = random.randint(0, nhost-1)
+
+		# 不能再生成DC间的流量了
+		while ((inter_flow_cnt == inter_flow_cnt_limit) and (src <= 63 and dst >= 64 or src >= 64 and dst <= 63)):
+			dst = random.randint(0, nhost-1)
+			while (dst == src):
+				dst = random.randint(0, nhost-1)
+		# 不能再生成DC内部的流量了
+		while ((intra_flow_cnt == intra_flow_cnt_limit) and (src <= 63 and dst <= 63 or src >= 64 and dst >= 64)):
+			dst = random.randint(0, nhost-1)
+			while (dst == src):
+				dst = random.randint(0, nhost-1)
+
 		if (t + inter_t > time + base_t):
 			heapq.heappop(host_list)
 		else:
 			size = int(customRand.rand())
 			if size <= 0:
 				size = 1
-			n_flow += 1;
+		
+			if (src <= 63 and dst >= 64 or src >= 64 and dst <= 63):
+				inter_flow_cnt += 1
+			else:
+				intra_flow_cnt += 1
+			
+			n_flow += 1
+			if src == dst:
+				print("src == dst!!!")
 			ofile.write("%d %d 3 100 %d %.9f\n"%(src, dst, size, t * 1e-9))
 			heapq.heapreplace(host_list, (t + inter_t, src))
+
+	print(f"intra_flow_count = {intra_flow_cnt}\n inter_flow_count = {inter_flow_cnt}\n")
+	print(f"intra_flow_count / inter_flow_count = {intra_flow_cnt / inter_flow_cnt}")
+
 	ofile.seek(0)
-	ofile.write("%d"%n_flow)
+	ofile.write("%d" % n_flow)
 	ofile.close()
-
-'''
-	f_list = []
-	avg = customRand.getAvg()
-	avg_inter_arrival = 1/(bandwidth*load/8./avg)*1000000000
-	# print avg_inter_arrival
-	for i in range(nhost):
-		t = base_t
-		while True:
-			inter_t = int(poisson(avg_inter_arrival))
-			t += inter_t
-			dst = random.randint(0, nhost-1)
-			while (dst == i):
-				dst = random.randint(0, nhost-1)
-			if (t > time + base_t):
-				break
-			size = int(customRand.rand())
-			if size <= 0:
-				size = 1
-			f_list.append(Flow(i, dst, size, t * 1e-9))
-
-	f_list.sort(key = lambda x: x.t)
-
-	print len(f_list)
-	for f in f_list:
-		print f
-'''
