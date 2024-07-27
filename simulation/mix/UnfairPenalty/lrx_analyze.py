@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 MODE = False # MODE为False表示单独分析intra或inter流量
+prefix = "intra"
 intra_ratio_sum = 0
 intra_flow_cnt = 0
 inter_ratio_sum = 0
@@ -71,7 +72,6 @@ def write_to_file(data, file_path):
             file.write(line + '\n')
 
 if __name__ == "__main__":
-    prefix = "intra"
     if MODE:
         input_file = './Inter-DC/ExprGroup/fct.txt'
     else:
