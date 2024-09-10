@@ -255,6 +255,16 @@ namespace ns3 {
 		DequeueAndTransmit();
 	}
 
+	/**
+ * @brief 从队列中取出并发送数据包
+ *
+ * 如果链路未连接，则返回。如果发送通道忙，则返回。
+ * 根据节点类型，从队列中取出数据包并发送。
+ * 如果节点类型为0，则从RDMA事件队列中获取数据包并发送；
+ * 如果节点类型为交换机，则从普通队列中取出数据包并发送。
+ *
+ * @return 无返回值
+ */
 	void
 		QbbNetDevice::DequeueAndTransmit(void)
 	{
@@ -278,7 +288,6 @@ namespace ns3 {
 				// transmit
 				m_traceQpDequeue(p, lastQp);
 				TransmitStart(p);
-
 				// update for the next avail time
 				m_rdmaPktSent(lastQp, p, m_tInterframeGap);
 			}else { // no packet to send
@@ -314,7 +323,10 @@ namespace ns3 {
 					m_node->SwitchNotifyDequeue(m_ifIndex, qIndex, p);
 					p->RemovePacketTag(t);
 				}
+				//m_node转为switchnode
 				m_traceDequeue(p, qIndex);
+
+
 				TransmitStart(p);
 				return;
 			}else{ //No queue can deliver any packet
@@ -406,7 +418,7 @@ namespace ns3 {
 		DequeueAndTransmit();
 		return true;
 	}
-
+	//发送PFC
 	void QbbNetDevice::SendPfc(uint32_t qIndex, uint32_t type){
 		Ptr<Packet> p = Create<Packet>(0);
 		PauseHeader pauseh((type == 0 ? m_pausetime : 0), m_queue->GetNBytes(qIndex), qIndex);
@@ -424,7 +436,37 @@ namespace ns3 {
 		p->PeekHeader(ch);
 		SwitchSend(0, p, ch);
 	}
-
+	void QbbNetDevice::SendCnp(Ptr<Packet> p, CustomHeader &ch){
+		//发送CNP
+		//新建包，设置l3Prot为0xFF，设置sip,dport,qIndex
+		qbbHeader seqh;
+		seqh.SetPG(ch.udp.pg);
+		seqh.SetSport(ch.udp.dport);
+		seqh.SetDport(ch.udp.sport);
+		seqh.SetIntHeader(ch.udp.ih);
+		//控制台输出pg、dport
+		std::cout << "pg: " << ch.udp.pg << " dport: " << ch.udp.dport << std::endl;
+		Ptr<Packet> newp = Create<Packet>(std::max(60-14-20-(int)seqh.GetSerializedSize(), 0));
+		newp->AddHeader(seqh);
+		Ipv4Header ipv4h;	// Prepare IPv4 header
+		ipv4h.SetDestination(Ipv4Address(ch.sip));
+		//Source为当前设备
+		ipv4h.SetSource(m_node->GetObject<Ipv4>()->GetAddress(m_ifIndex, 0).GetLocal());
+		ipv4h.SetProtocol(0xFF); //ack=0xFC nack=0xFD
+		ipv4h.SetTtl(64);
+		ipv4h.SetPayloadSize(newp->GetSize());
+		ipv4h.SetIdentification(UniformVariable(0, 65536).GetValue());
+		//控制台输出ipv4h的信息
+		std::cout << "ipv4h: " << ipv4h.GetDestination() << " " << ipv4h.GetSource() << " " << ipv4h.GetProtocol() << " " << ipv4h.GetTtl() << " " << ipv4h.GetPayloadSize() << " " << ipv4h.GetIdentification() << std::endl;
+		newp->AddHeader(ipv4h);
+		AddHeader(newp, 0x800);	// Attach PPP header
+		// send
+		CustomHeader ch2(CustomHeader::L2_Header | CustomHeader::L3_Header | CustomHeader::L4_Header);
+		newp->PeekHeader(ch2);
+		SwitchSend(0, newp, ch2);
+		//终端打印CNP
+		std::cout << "CNP sent from " << m_node->GetId() << " to " << ch.sip << " port " << ch.udp.dport << std::endl;
+	}
 	bool
 		QbbNetDevice::Attach(Ptr<QbbChannel> ch)
 	{

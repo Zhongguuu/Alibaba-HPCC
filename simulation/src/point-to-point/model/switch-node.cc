@@ -8,8 +8,10 @@
 #include "ns3/double.h"
 #include "switch-node.h"
 #include "qbb-net-device.h"
+#include "qbb-header.h"
 #include "ppp-header.h"
 #include "ns3/int-header.h"
+#include "rdma-hw.h"
 #include <cmath>
 
 namespace ns3 {
@@ -102,7 +104,7 @@ void SwitchNode::CheckAndSendResume(uint32_t inDev, uint32_t qIndex){
 		m_mmu->SetResume(inDev, qIndex);
 	}
 }
-
+//非常重要的函数！！！important
 void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 	int idx = GetOutDev(p, ch);
 	if (idx >= 0){
@@ -134,7 +136,6 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 	}else
 		return; // Drop
 }
-
 uint32_t SwitchNode::EcmpHash(const uint8_t* key, size_t len, uint32_t seed) {
   uint32_t h = seed;
   if (len > 3) {
@@ -191,7 +192,35 @@ bool SwitchNode::SwitchReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> pack
 	SendToDev(packet, ch);
 	return true;
 }
-
+void SwitchNode::CheckAndSendCnp(uint32_t ifIndex, uint32_t qIndex, Ptr<Packet> p) {
+	FlowIdTag t;
+	p->PeekPacketTag(t);
+	if (qIndex != 0){
+		uint32_t inDev = t.GetFlowId();
+		if (m_ecnEnabled){
+			bool egressCongested = m_mmu->ShouldSendCN(ifIndex, qIndex);
+			if (egressCongested){
+				CustomHeader ch(CustomHeader::L2_Header | CustomHeader::L3_Header | CustomHeader::L4_Header);
+				p->PeekHeader(ch);
+				//终端输出流的信息
+				std::cout << "ECN sent from " << m_devices[ifIndex]->GetNode()->GetId() << " to " << m_devices[inDev]->GetNode()->GetId() << std::endl;
+				if(ch.GetIpv4EcnBits()==0){
+					CheckAndSendCnp(ifIndex, qIndex, p);
+					Ipv4Header h;
+					PppHeader ppp;
+					p->RemoveHeader(ppp);
+					p->RemoveHeader(h);
+					h.SetEcn((Ipv4Header::EcnType)0x03);
+					p->AddHeader(h);
+					p->AddHeader(ppp);
+					Ptr<QbbNetDevice> device = DynamicCast<QbbNetDevice>(m_devices[inDev]);
+					device->SendCnp(p, ch);
+				}
+			}
+		}
+	}
+}
+//设置ECN标记的地方
 void SwitchNode::SwitchNotifyDequeue(uint32_t ifIndex, uint32_t qIndex, Ptr<Packet> p){
 	FlowIdTag t;
 	p->PeekPacketTag(t);
@@ -203,13 +232,21 @@ void SwitchNode::SwitchNotifyDequeue(uint32_t ifIndex, uint32_t qIndex, Ptr<Pack
 		if (m_ecnEnabled){
 			bool egressCongested = m_mmu->ShouldSendCN(ifIndex, qIndex);
 			if (egressCongested){
-				PppHeader ppp;
-				Ipv4Header h;
-				p->RemoveHeader(ppp);
-				p->RemoveHeader(h);
-				h.SetEcn((Ipv4Header::EcnType)0x03);
-				p->AddHeader(h);
-				p->AddHeader(ppp);
+				CustomHeader ch(CustomHeader::L2_Header | CustomHeader::L3_Header | CustomHeader::L4_Header);
+				p->PeekHeader(ch);
+				//终端输出流的信息
+				std::cout << "ECN sent from " << m_devices[ifIndex]->GetNode()->GetId() << " to " << m_devices[inDev]->GetNode()->GetId() << std::endl;
+				if(ch.GetIpv4EcnBits()==0){ // UDP
+					Ipv4Header h;
+					PppHeader ppp;
+					p->RemoveHeader(ppp);
+					p->RemoveHeader(h);
+					h.SetEcn((Ipv4Header::EcnType)0x03);
+					p->AddHeader(h);
+					p->AddHeader(ppp);
+					Ptr<QbbNetDevice> device = DynamicCast<QbbNetDevice>(m_devices[inDev]);
+					device->SendCnp(p, ch);
+				}
 			}
 		}
 		//CheckAndSendPfc(inDev, qIndex);

@@ -41,7 +41,7 @@ private:
 	void CheckAndSendResume(uint32_t inDev, uint32_t qIndex);
 public:
 	Ptr<SwitchMmu> m_mmu;
-
+	void CheckAndSendCnp(uint32_t ifIndex, uint32_t qIndex, Ptr<Packet> p);
 	static TypeId GetTypeId (void);
 	SwitchNode();
 	void SetEcmpSeed(uint32_t seed);
@@ -49,7 +49,6 @@ public:
 	void ClearTable();
 	bool SwitchReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet, CustomHeader &ch);
 	void SwitchNotifyDequeue(uint32_t ifIndex, uint32_t qIndex, Ptr<Packet> p);
-
 	// for approximate calc in PINT
 	int logres_shift(int b, int l);
 	int log2apprx(int x, int b, int m, int l); // given x of at most b bits, use most significant m bits of x, calc the result in l bits
